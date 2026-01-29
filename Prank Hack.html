@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TITLE</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #000;
+      color: #00FF00;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .terminal {
+      width: 80%;
+      max-width: 1000px;
+      background: #000;
+      padding: 20px;
+      white-space: pre-wrap;
+      color: #00FF00;
+    }
+
+    .typed {
+      display: inline;
+    }
+
+    .blink {
+      display: inline-block;
+      width: 10px;
+      background-color: #00FF00;
+      animation: blink 1s step-start infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="terminal" id="terminal">
+    <div id="typed-text" class="typed"></div><div class="blink"></div>
+  </div>
+
+  <audio autoplay loop>
+    <source src="https://assets.mixkit.co/active_storage/sfx/2186/2186-preview.mp3" type="audio/mpeg">
+    <!-- Spooky loop sound -->
+  </audio>
+
+  <script>
+    const lines = [
+      "Connecting to remote host...",
+      "Access granted.",
+      "Injecting malicious payload...",
+      "Payload delivered successfully.",
+      "Erasing system logs...",
+      "Encrypting local files...",
+      "Uploading files to remote server...",
+      "¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦",
+      "ROOT ACCESS ENABLED",
+      "",
+      "YOU'VE BEEN HACKED.",
+      "This system is now under our control.",
+      "Don't worry — we left your memes.",
+    ];
+
+    const terminal = document.getElementById("typed-text");
+
+    let line = 0;
+    let char = 0;
+
+    function typeLine() {
+      if (line < lines.length) {
+        if (char < lines[line].length) {
+          terminal.textContent += lines[line].charAt(char);
+          char++;
+          setTimeout(typeLine, 30);
+        } else {
+          terminal.textContent += "\n";
+          char = 0;
+          line++;
+          setTimeout(typeLine, 300);
+        }
+      }
+    }
+
+    typeLine();
+  </script>
+
+</body>
+</html>
