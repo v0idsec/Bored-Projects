@@ -1,0 +1,350 @@
+<!-- 
+This is a game of TAK - You can view the rules of TAK online here: https://ustak.org/play-beautiful-game-tak/ 
+It is HTML w/ js in body so it can be played locally on web-browser.
+Maybe with extra time I might make it local multi? 
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tak — 5×5 (Human-like AI, Undo, PC Move)</title>
+  <style>
+    :root{--bg:#0f1115;--panel:#161a22;--text:#e7e9ee;--muted:#9aa3b2;--p1:#6fd3ff;--p2:#ffb8b8;--accent:#8b5cf6}
+    *{box-sizing:border-box}html,body{height:100%}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:radial-gradient(1200px 800px at 10% -10%,#1a2030 0%,#0f1115 50%,#0b0d12 100%);color:var(--text);display:grid;place-items:center;padding:20px}
+    .app{width:min(1200px,95vw);display:grid;grid-template-columns:380px 1fr;gap:16px}
+    @media(max-width:900px){.app{grid-template-columns:1fr}}
+    .panel{background:linear-gradient(180deg,#171b25,#12151d);border:1px solid #242a38;border-radius:16px;padding:14px}
+    .header{display:flex;align-items:center;justify-content:space-between}
+    .title{font-size:20px;font-weight:700}
+    .subtitle{font-size:13px;color:var(--muted)}
+    button,select,input{background:#1b2130;color:var(--text);border:1px solid #2a3142;border-radius:10px;padding:8px 10px;font-size:14px}
+    button.primary{background:#262f45;border-color:#39445e}
+    .pill{padding:6px 10px;border-radius:999px;font-size:12px}
+    .pill.p1{background:rgba(111,211,255,.07);color:var(--p1);border:1px solid rgba(111,211,255,.12)}
+    .pill.p2{background:rgba(255,184,184,.07);color:var(--p2);border:1px solid rgba(255,184,184,.12)}
+
+    .board-wrap{aspect-ratio:1/1;width:100%}
+    .board{width:100%;height:100%;display:grid;gap:6px;padding:6px;border-radius:12px;border:1px solid #242a38;background:#0c0f16}
+    .cell{background:linear-gradient(180deg,#1c2436,#141927);border:1px solid #2a3142;border-radius:10px;position:relative;display:grid;place-items:center;cursor:pointer}
+    .coords{position:absolute;inset:6px;pointer-events:none}
+    .coord{position:absolute;font-size:11px;color:var(--muted)}
+    .coord.top{top:4px;left:6px}
+    .coord.bottom{bottom:4px;right:6px}
+    .stack{display:flex;align-items:flex-end;gap:4px;flex-direction:column}
+    .stone{width:64%;height:18px;border-radius:6px;border:1px solid rgba(255,255,255,.1);box-shadow:0 2px 0 rgba(0,0,0,.35)}
+    .stone.p1{background:linear-gradient(180deg,#6fd3ff,#3aa6d0)}
+    .stone.p2{background:linear-gradient(180deg,#ffb8b8,#e98a8a)}
+    .stone.wall{height:14px;outline:2px dashed rgba(255,255,255,.22)}
+    .stone.cap{height:20px;outline:2px solid var(--accent);border-radius:8px}
+    .highlight{outline:3px solid rgba(139,92,246,.45)}
+    .status{margin-top:8px;padding:10px;border-radius:10px;background:#141826;border:1px solid #2a3142}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .hr{height:1px;background:#242a38;margin:10px 0;border-radius:99px}
+    .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#141a28;border:1px solid #2a3142;padding:10px;border-radius:10px;display:none}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel">
+      <div class="header">
+        <div>
+          <div class="title">Tak — 5×5 (Human-like AI)</div>
+          <div class="subtitle">You: Player 1 (North–South) · PC: Player 2 (East–West)</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="undoBtn">? Undo</button>
+          <button id="resetBtn" class="primary">? New Game</button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px" class="controls">
+        <button data-action="placeFlat">Place Flat</button>
+        <button data-action="placeWall">Place Standing</button>
+        <button data-action="placeCap">Place Capstone</button>
+        <button data-action="move">Move Stack</button>
+        <button id="pcMoveBtn">PC Move</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:6px">
+        <div>
+          <div class="mini">Turn</div>
+          <div id="turn" class="pill p1">Player 1</div>
+        </div>
+        <div style="flex:1">
+          <div class="mini">Status</div>
+          <div id="status" class="status">Select an action then click a square. Click PC Move when ready.</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div class="mini">Player 1 Supply</div>
+          <div>Flats: <span id="p1Flats">21</span> · Caps: <span id="p1Caps">1</span></div>
+        </div>
+        <div>
+          <div class="mini">Player 2 Supply</div>
+          <div>Flats: <span id="p2Flats">21</span> · Caps: <span id="p2Caps">1</span></div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="mini">Drop Pattern (for moves) — e.g. <code>1-1-3</code></div>
+      <input id="dropPattern" placeholder="1-1-..." style="width:100%;margin-top:6px" />
+    </div>
+
+    <div class="panel board-wrap">
+      <div id="board" class="board"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // --- Config ---
+    const SIZE = 5;
+    const initialSupply = { flats: 21, caps: 1 };
+
+    // --- State ---
+    let board = []; // board[r][c] = array bottom->top of pieces {player:1|2, type:'flat'|'wall'|'cap'}
+    let currentPlayer = 1; // 1 human, 2 PC
+    let action = 'placeFlat';
+    let supply = {1:{...initialSupply},2:{...initialSupply}};
+    let selected = null; // for move selecting {r,c}
+    let history = []; // stack of previous states for undo
+
+    // DOM
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const turnEl = document.getElementById('turn');
+    const p1FlatsEl = document.getElementById('p1Flats');
+    const p2FlatsEl = document.getElementById('p2Flats');
+    const p1CapsEl = document.getElementById('p1Caps');
+    const p2CapsEl = document.getElementById('p2Caps');
+    const dropPatternEl = document.getElementById('dropPattern');
+    const toastEl = document.getElementById('toast');
+    const pcMoveBtn = document.getElementById('pcMoveBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // --- Utilities ---
+    function deepCloneBoard(b){ return b.map(row => row.map(cell => cell.map(p => ({player:p.player,type:p.type})))) }
+    function pushHistory(){ history.push({board:deepCloneBoard(board),supply:JSON.parse(JSON.stringify(supply)),currentPlayer,action,selected: selected ? {...selected} : null}); }
+    function popHistory(){ if(history.length===0) return false; const s=history.pop(); board=s.board; supply=s.supply; currentPlayer=s.currentPlayer; action=s.action; selected=s.selected; render(); return true; }
+    function showToast(msg){ toastEl.textContent=msg; toastEl.style.display='block'; setTimeout(()=>toastEl.style.display='none',1400); }
+    function coordName(r,c){ return `${String.fromCharCode(65+r)}${c+1}` }
+
+    // --- Init / Build ---
+    function initBoard(){ board = Array.from({length:SIZE},()=>Array.from({length:SIZE},()=>[])); }
+
+    function buildUI(){ boardEl.style.gridTemplateColumns = `repeat(${SIZE},1fr)`; boardEl.style.gridTemplateRows = `repeat(${SIZE},1fr)`; boardEl.innerHTML='';
+      for(let r=0;r<SIZE;r++){
+        for(let c=0;c<SIZE;c++){
+          const cell = document.createElement('div'); cell.className='cell'; cell.dataset.r=r; cell.dataset.c=c;
+          const coords = document.createElement('div'); coords.className='coords'; coords.innerHTML=`<span class='coord top'>${String.fromCharCode(65+r)}${c+1}</span><span class='coord bottom'></span>`;
+          cell.appendChild(coords); cell.addEventListener('click',onCellClick); boardEl.appendChild(cell);
+        }
+      }
+    }
+
+    // --- Rendering ---
+    function render(){
+      turnEl.textContent = currentPlayer===1? 'Player 1' : 'Player 2';
+      turnEl.className = `pill ${currentPlayer===1? 'p1':'p2'}`;
+      p1FlatsEl.textContent = supply[1].flats; p2FlatsEl.textContent = supply[2].flats; p1CapsEl.textContent = supply[1].caps; p2CapsEl.textContent = supply[2].caps;
+
+      [...boardEl.children].forEach(cell=>{
+        const r=+cell.dataset.r, c=+cell.dataset.c; const stack = board[r][c];
+        const coords = cell.querySelector('.coords .coord.bottom'); coords.textContent = stack.length? stack.length: '';
+        // clear stack display
+        const old = cell.querySelector('.stack'); if(old) old.remove();
+        if(stack.length){ const s=document.createElement('div'); s.className='stack'; stack.forEach(piece=>{ const el=document.createElement('div'); el.className=`stone ${piece.player===1?'p1':'p2'} ${piece.type==='wall'?'wall':''} ${piece.type==='cap'?'cap':''}`; s.appendChild(el); }); cell.appendChild(s); }
+        cell.classList.toggle('highlight', selected && selected.r===r && selected.c===c);
+      });
+    }
+
+    // --- Game rules: place/move/validate ---
+    function setStatus(msg){ statusEl.textContent = msg; }
+
+    function inBounds(r,c){ return r>=0 && c>=0 && r<SIZE && c<SIZE }
+
+    function handlePlace(r,c){ const stack=board[r][c]; if(stack.length>0){ showToast('Square occupied'); return false; }
+      if(action==='placeCap' && supply[currentPlayer].caps<=0){ showToast('No capstones left'); return false; }
+      if((action==='placeFlat'||action==='placeWall') && supply[currentPlayer].flats<=0){ showToast('No flats left'); return false; }
+      const type = action==='placeFlat'?'flat': action==='placeWall'?'wall':'cap';
+      pushHistory(); board[r][c].push({player:currentPlayer,type}); if(type==='cap') supply[currentPlayer].caps--; else supply[currentPlayer].flats--; endTurnAndCheck(); return true;
+    }
+
+    function parseDropPattern(maxSteps,maxStones){ const txt=(dropPatternEl.value||'').trim(); if(!txt)return null; const parts=txt.split(/[-,\\s]+/).map(x=>parseInt(x,10)).filter(n=>Number.isFinite(n)&&n>0); if(parts.length===0) return null; const usedSteps=Math.min(parts.length,maxSteps); let pat=parts.slice(0,usedSteps); const sum=pat.reduce((a,b)=>a+b,0); if(sum>maxStones){ const scale = maxStones/sum; pat = pat.map(n=>Math.max(1,Math.floor(n*scale))); }
+      // if still not equal, adjust last
+      let s=pat.reduce((a,b)=>a+b,0); while(s<maxStones){ pat[pat.length-1]++; s++; } while(s>maxStones){ pat[pat.length-1]--; s--; if(pat[pat.length-1]===0) pat.pop(); }
+      return pat;
+    }
+
+    function handleMoveClick(r,c){ if(!selected){ if(board[r][c].length===0){ showToast('No stack here'); return; } const top=board[r][c][board[r][c].length-1]; if(top.player!==currentPlayer){ showToast('Must move your own top'); return; } selected={r,c}; setStatus(`Selected ${coordName(r,c)} — choose destination`); render(); } else {
+        if(selected.r===r && selected.c===c){ selected=null; setStatus('Move cancelled'); render(); return; }
+        const dir = getDirection(selected,{r,c}); if(!dir){ showToast('Choose straight orthogonal destination'); return; }
+        const dist = Math.max(Math.abs(r-selected.r), Math.abs(c-selected.c)); doMove(selected.r,selected.c,dir,dist);
+      }
+    }
+
+    function getDirection(a,b){ if(a.r===b.r && b.c>a.c) return 'E'; if(a.r===b.r && b.c<a.c) return 'W'; if(a.c===b.c && b.r>a.r) return 'S'; if(a.c===b.c && b.r<a.r) return 'N'; return null }
+
+    function doMove(sr,sc,dir,dist){ const stack = board[sr][sc]; if(stack.length===0) return; const top = stack[stack.length-1]; if(top.player!==currentPlayer){ showToast('Must move your own stack'); return; }
+      const carry = Math.min(stack.length, SIZE);
+      if(dist<1){ showToast('Pick a destination at least 1 away'); return; }
+      if(dist>carry){ showToast(`Too far. Can carry up to ${carry}`); return; }
+      const pattern = parseDropPattern(dist,carry) || Array.from({length:dist},(_,i)=> i===dist-1 ? carry-(dist-1):1);
+      const total=pattern.reduce((a,b)=>a+b,0); if(total!==carry){ // adjust to default
+        const base = Array.from({length:dist},(_,i)=> i===dist-1? carry-(dist-1):1);
+        pattern.splice(0,pattern.length,...base);
+        showToast('Adjusted drop to default pattern');
+      }
+      // take pieces
+      pushHistory(); const picked = board[sr][sc].splice(stack.length - carry, carry);
+      let r=sr, c=sc;
+      for(let i=0;i<dist;i++){
+        if(dir==='N') r--; if(dir==='S') r++; if(dir==='E') c++; if(dir==='W') c--;
+        if(!inBounds(r,c)){ showToast('Out of bounds'); board[sr][sc].push(...picked); render(); return; }
+        const drop = pattern[i];
+        // if final square has standing stone and our moving top is cap, flatten. otherwise if standing and not cap, illegal.
+        if(i===dist-1 && board[r][c].length>0){ const destTop = board[r][c][board[r][c].length-1]; const movingTop = picked[picked.length-1]; if(destTop.type==='wall' && movingTop.type==='cap'){ destTop.type='flat'; } else if(destTop.type==='wall'){ showToast('Blocked by standing stone'); board[sr][sc].push(...picked); render(); return; } }
+        // drop
+        for(let k=0;k<drop;k++){ if(picked.length===0) break; board[r][c].push(picked.shift()); }
+      }
+      selected=null; endTurnAndCheck();
+    }
+
+    function endTurnAndCheck(){ render(); const winner = checkRoadWin(); if(winner){ setStatus(`Player ${winner} wins by road!`); showToast(`Player ${winner} wins!`); boardEl.querySelectorAll('.cell').forEach(c=>c.style.pointerEvents='none'); return; } currentPlayer = currentPlayer===1?2:1; updateActionStatus(); }
+
+    function updateActionStatus(){ const names={placeFlat:'Place Flat',placeWall:'Place Standing',placeCap:'Place Capstone',move:'Move Stack'}; setStatus(`${names[action]} — Player ${currentPlayer}`); }
+
+    // --- Win detection (fixed) ---
+    function checkRoadWin(){ // return 0|1|2
+      if(hasConnection(1,'NS')) return 1; if(hasConnection(2,'EW')) return 2; return 0;
+    }
+    function hasConnection(player,dir){ const visited = Array.from({length:SIZE},()=>Array(SIZE).fill(false)); const q=[];
+      for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ const stack=board[r][c]; if(stack.length){ const top=stack[stack.length-1]; if(top.player===player && top.type!=='wall'){ if(dir==='NS' && r===0){ q.push([r,c]); visited[r][c]=true } if(dir==='EW' && c===0){ q.push([r,c]); visited[r][c]=true } } } }
+      const deltas=[[1,0],[-1,0],[0,1],[0,-1]];
+      while(q.length){ const [r,c]=q.shift(); if(dir==='NS' && r===SIZE-1) return true; if(dir==='EW' && c===SIZE-1) return true; for(const [dr,dc] of deltas){ const nr=r+dr,nc=c+dc; if(nr<0||nc<0||nr>=SIZE||nc>=SIZE||visited[nr][nc]) continue; const stack=board[nr][nc]; if(!stack.length) continue; const top=stack[stack.length-1]; if(top.player===player && top.type!=='wall'){ visited[nr][nc]=true; q.push([nr,nc]); } } }
+      return false;
+    }
+
+    // --- Input handling ---
+    document.querySelectorAll('[data-action]').forEach(btn=>btn.addEventListener('click',()=>{ action=btn.dataset.action; selected=null; updateActionStatus(); render(); }));
+    document.getElementById('resetBtn').addEventListener('click',()=>{ startNewGame(); });
+    undoBtn.addEventListener('click',()=>{ if(popHistory()){ showToast('Undo'); setStatus('Undid last move'); boardEl.querySelectorAll('.cell').forEach(c=>c.style.pointerEvents='auto'); } else showToast('Nothing to undo'); });
+    pcMoveBtn.addEventListener('click',()=>{ if(currentPlayer!==2){ showToast('It is not the PC turn'); return; } aiMakeMove(); });
+
+    function onCellClick(e){ const r=+e.currentTarget.dataset.r, c=+e.currentTarget.dataset.c; if(currentPlayer!==1){ showToast('Not your turn'); return; } if(action.startsWith('place')){ handlePlace(r,c); } else if(action==='move'){ handleMoveClick(r,c); } }
+
+    // --- AI (human-like, strategic but imperfect) ---
+    function aiMakeMove(){ // high-level: try win by placement, block player immediate win, try win by move, block by move, extend road, fallback random placement/move
+      setStatus('PC thinking...'); setTimeout(()=>{
+        // 1) winning placement
+        const winPlace = findWinningPlacement(2); if(winPlace){ applyAIPlacement(winPlace.r,winPlace.c,winPlace.type); return; }
+        // 2) block immediate opponent win by placement
+        const blockPlace = findWinningPlacement(1); if(blockPlace){ // try to block by placing flat or wall; prefer wall if available
+          if(supply[2].flats>0){ applyAIPlacement(blockPlace.r,blockPlace.c,'flat'); return; }
+        }
+        // 3) winning move (stack move)
+        const winMove = findWinningMove(2); if(winMove){ applyAIMove(winMove); return; }
+        // 4) block opponent by moving onto their path (simple) or placing wall
+        const blockMove = findBlockingMove(1); if(blockMove){ applyAIMove(blockMove); return; }
+        // 5) extend own road greedily
+        const extend = findExtendPlacement(2); if(extend){ applyAIPlacement(extend.r,extend.c,'flat'); return; }
+        // 6) use capstone to flatten important wall in path if available
+        const capTarget = findCapstoneOpportunity(2); if(capTarget && supply[2].caps>0){ applyAIPlacement(capTarget.r,capTarget.c,'cap'); return; }
+        // 7) else random sensible placement
+        const random = pickRandomEmpty(); if(random){ const pickType = pickAIPieceType(); applyAIPlacement(random.r,random.c,pickType); return; }
+        // fallback: pass
+        setStatus('PC passes (no move)'); currentPlayer=1; render(); }, 350 + Math.random()*450);
+    }
+
+    // Helpers for AI: simulate placements/moves
+    function cloneState(){ return {board:deepCloneBoard(board),supply:JSON.parse(JSON.stringify(supply)),currentPlayer} }
+    function restoreState(state){ board = deepCloneBoard(state.board); supply = JSON.parse(JSON.stringify(state.supply)); currentPlayer = state.currentPlayer; }
+
+    function simulatePlacement(r,c,type,player){ const prev = cloneState(); if(board[r][c].length>0) return false; board[r][c].push({player,type}); const win = (checkRoadWin()===player); restoreState(prev); return win; }
+
+    function findWinningPlacement(player){ for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ if(board[r][c].length>0) continue; // try flats
+        if(supply[player].flats>0 && simulatePlacement(r,c,'flat',player)) return {r,c,type:'flat'};
+        if(supply[player].caps>0 && simulatePlacement(r,c,'cap',player)) return {r,c,type:'cap'};
+        if(supply[player].flats>0 && simulatePlacement(r,c,'wall',player)) return {r,c,type:'wall'};
+    } return null; }
+
+    function applyAIPlacement(r,c,type){ pushHistory(); board[r][c].push({player:2,type}); if(type==='cap') supply[2].caps--; else supply[2].flats--; endTurnAndCheck(); showToast(`PC placed ${type} at ${coordName(r,c)}`); }
+
+    function pickRandomEmpty(){ const empties=[]; for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(board[r][c].length===0) empties.push({r,c}); if(empties.length===0) return null; return empties[Math.floor(Math.random()*empties.length)]; }
+    function pickAIPieceType(){ // weighted: flat common, small chance wall or cap if available
+      const rnd=Math.random(); if(rnd<0.75 && supply[2].flats>0) return 'flat'; if(rnd<0.9 && supply[2].flats>0) return 'wall'; if(supply[2].caps>0) return 'cap'; return supply[2].flats>0?'flat':'cap'; }
+
+    // Simple move-finding: try moves that result in win
+    function findWinningMove(player){ for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ const stack = board[r][c]; if(!stack.length) continue; const top=stack[stack.length-1]; if(top.player!==player) continue; const carry=Math.min(stack.length,SIZE);
+        for(let dist=1;dist<=Math.min(carry,4);dist++){ const dirs=['N','S','E','W']; for(const dir of dirs){ const state = cloneState(); if(simulateMoveAndCheck(player,r,c,dir,dist)) return {sr:r,sc:c,dir,dist}; restoreState(state);
+          }
+        }
+    } return null; }
+
+    function simulateMoveAndCheck(player,sr,sc,dir,dist){ const stack = board[sr][sc]; if(stack.length===0) return false; const carry=Math.min(stack.length,SIZE); if(dist>carry) return false; const pattern = Array.from({length:dist},(_,i)=> i===dist-1? carry-(dist-1):1);
+      const picked = board[sr][sc].splice(stack.length - carry, carry);
+      let r=sr,c=sc; for(let i=0;i<dist;i++){ if(dir==='N') r--; if(dir==='S') r++; if(dir==='E') c++; if(dir==='W') c--; if(!inBounds(r,c)){ board[sr][sc].push(...picked); return false; } if(i===dist-1 && board[r][c].length>0){ const destTop = board[r][c][board[r][c].length-1]; const movingTop = picked[picked.length-1]; if(destTop.type==='wall' && movingTop.type!=='cap'){ board[sr][sc].push(...picked); return false; } if(destTop.type==='wall' && movingTop.type==='cap'){ destTop.type='flat'; } }
+        const drop = pattern[i]; for(let k=0;k<drop;k++){ if(picked.length===0) break; board[r][c].push(picked.shift()); }
+      }
+      const win = (checkRoadWin()===player);
+      return win;
+    }
+
+    // Blocking move: try to block opponent by moving onto one of their path tiles
+    function findBlockingMove(opponent){ for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ const stack=board[r][c]; if(!stack.length) continue; const top=stack[stack.length-1]; if(top.player!==2) continue; const carry=Math.min(stack.length,SIZE);
+          const dirs=['N','S','E','W']; for(const dir of dirs){ for(let dist=1;dist<=Math.min(carry,4);dist++){ const state=cloneState(); if(simulateMoveAndBlock(opponent,r,c,dir,dist)) return {sr:r,sc:c,dir,dist}; restoreState(state); } }
+      }
+      return null;
+    }
+    function simulateMoveAndBlock(opponent,sr,sc,dir,dist){ const stack = board[sr][sc]; if(stack.length===0) return false; const carry=Math.min(stack.length,SIZE); if(dist>carry) return false; const pattern = Array.from({length:dist},(_,i)=> i===dist-1? carry-(dist-1):1);
+      const picked = board[sr][sc].splice(stack.length - carry, carry);
+      let r=sr,c=sc; for(let i=0;i<dist;i++){ if(dir==='N') r--; if(dir==='S') r++; if(dir==='E') c++; if(dir==='W') c--; if(!inBounds(r,c)){ board[sr][sc].push(...picked); return false; } if(i===dist-1 && board[r][c].length>0){ const destTop = board[r][c][board[r][c].length-1]; const movingTop = picked[picked.length-1]; if(destTop.type==='wall' && movingTop.type!=='cap'){ board[sr][sc].push(...picked); return false; } if(destTop.type==='wall' && movingTop.type==='cap'){ destTop.type='flat'; } }
+        const drop = pattern[i]; for(let k=0;k<drop;k++){ if(picked.length===0) break; board[r][c].push(picked.shift()); }
+      }
+      const landedOnOpponent = board[r][c].length && board[r][c][board[r][c].length-1].player===opponent;
+      const nearOpponentGoal = (opponent===1 && r>=SIZE-2);
+      return landedOnOpponent || nearOpponentGoal;
+    }
+
+    function applyAIMove(move){ pushHistory(); doMove(move.sr,move.sc,move.dir,move.dist); showToast(`PC moved from ${coordName(move.sr,move.sc)}`); }
+
+    // Extend own road by placing near existing connected components
+    function findExtendPlacement(player){ const comp = largestComponent(player); if(!comp || comp.cells.length===0) return null; const neighbors = [];
+      const deltas=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [r,c] of comp.cells){ for(const [dr,dc] of deltas){ const nr=r+dr,nc=c+dc; if(inBounds(nr,nc) && board[nr][nc].length===0) neighbors.push({r:nr,c:nc}); } }
+      if(neighbors.length===0) return null; return neighbors[Math.floor(Math.random()*neighbors.length)];
+    }
+
+    function largestComponent(player){ const visited = Array.from({length:SIZE},()=>Array(SIZE).fill(false)); let best=null;
+      for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ if(visited[r][c]) continue; const stack=board[r][c]; if(!stack.length) continue; const top=stack[stack.length-1]; if(top.player!==player || top.type==='wall') continue;
+          const q=[[r,c]]; visited[r][c]=true; const cells=[[r,c]];
+          while(q.length){ const [cr,cc]=q.shift(); for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nr=cr+dr,nc=cc+dc; if(nr<0||nc<0||nr>=SIZE||nc>=SIZE||visited[nr][nc]) continue; const s=board[nr][nc]; if(!s.length) continue; const t=s[s.length-1]; if(t.player===player && t.type!=='wall'){ visited[nr][nc]=true; q.push([nr,nc]); cells.push([nr,nc]); } } }
+          if(!best || cells.length>best.cells.length) best={cells}; }
+      return best;
+    }
+
+    // Find capstone opportunity to flatten enemy wall blocking PC's path (naive search)
+    function findCapstoneOpportunity(player){ for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ if(board[r][c].length===0) continue; const top=board[r][c][board[r][c].length-1]; if(top.player!==1 && top.type!=='wall') continue;
+        const deltas=[[1,0],[-1,0],[0,1],[0,-1]];
+        for(const [dr,dc] of deltas){ const nr=r+dr,nc=c+dc; if(inBounds(nr,nc) && board[nr][nc].length===0) return {r:nr,c:nc}; }
+    } return null }
+
+    // --- Start / Reset ---
+    function startNewGame(){ initBoard(); buildUI(); supply={1:{...initialSupply},2:{...initialSupply}}; currentPlayer=1; action='placeFlat'; selected=null; history=[]; render(); setStatus('New game — Player 1 to move'); boardEl.querySelectorAll('.cell').forEach(c=>c.style.pointerEvents='auto'); }
+
+    // --- Start ---
+    buildUI(); startNewGame();
+
+  </script>
+</body>
+</html>
